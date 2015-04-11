@@ -66,8 +66,8 @@ type Server struct {
 	stopper        *util.Stopper
 }
 
-// NewServer creates a Server from a server.Context.
-func NewServer(ctx *Context) (*Server, error) {
+// NewServer creates a Server from a server.Context and an optional Stopper.
+func NewServer(ctx *Context, stopper *util.Stopper) (*Server, error) {
 	if ctx == nil {
 		return nil, util.Error("ctx must not be null")
 	}
@@ -96,12 +96,16 @@ func NewServer(ctx *Context) (*Server, error) {
 		}
 	}
 
+	if stopper == nil {
+		stopper = util.NewStopper()
+	}
+
 	s := &Server{
 		ctx:     ctx,
 		host:    host,
 		mux:     http.NewServeMux(),
 		clock:   hlc.NewClock(hlc.UnixNano),
-		stopper: util.NewStopper(),
+		stopper: stopper,
 	}
 	s.clock.SetMaxOffset(ctx.MaxOffset)
 

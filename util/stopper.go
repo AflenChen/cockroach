@@ -145,6 +145,11 @@ func (s *Stopper) Stop() {
 	// stop WaitGroup while we Wait().
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// If the state isn't RUNNING, Stop() has been invoked before.
+	// Since we are holding the lock, it must have completed.
+	if s.getState() != RUNNING {
+		return
+	}
 	s.setState(DRAINING)
 	s.drain.Wait()
 	close(s.stopper)

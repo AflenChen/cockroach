@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	commander "code.google.com/p/go-commander"
 	"code.google.com/p/go-uuid/uuid"
@@ -143,7 +144,9 @@ func runStart(cmd *commander.Command, args []string) {
 	}
 
 	log.Info("Starting cockroach cluster")
-	s, err := server.NewServer(Context)
+	stopper := util.NewStopper()
+	stopper.AddWorker()
+	s, err := server.NewServer(Context, stopper)
 	if err != nil {
 		log.Errorf("Failed to start Cockroach server: %v", err)
 		return
@@ -155,13 +158,32 @@ func runStart(cmd *commander.Command, args []string) {
 		log.Errorf("Cockroach server exited with error: %v", err)
 		return
 	}
-	defer s.Stop()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, os.Kill)
 
 	// Block until one of the signals above is received.
-	<-c
+	select {
+	case <-stopper.ShouldStop():
+	case <-c:
+	}
+	stopper.SetStopped()
+
+	log.Infof("initiating graceful shutdown of server")
+	ch := make(chan struct{})
+	go func() {
+		s.Stop()
+		close(ch)
+	}()
+	select {
+	case <-c:
+		log.Warningf("SIGTERM or SIGKILL received, initiating hard shutdown")
+	case <-time.After(time.Minute):
+		log.Warningf("time limit reached, initiating hard shutdown")
+		return
+	case <-ch:
+		log.Infof("graceful shutdown completed")
+	}
 }
 
 // A quitCmd command shuts down the node server.
